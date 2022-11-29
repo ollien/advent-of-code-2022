@@ -9,7 +9,7 @@ defmodule AdventOfCode2022.CLI do
 
   defp get_action([raw_day_num, filename]) do
     case Integer.parse(raw_day_num) do
-      {day_num, ""} when raw_day_num >= 0 ->
+      {day_num, ""} when raw_day_num > 0 ->
         {:run_day, %{day: day_num, filename: filename}}
 
       {_arg, _extra} ->
