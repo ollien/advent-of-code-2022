@@ -1,21 +1,10 @@
-# AdventOfCode2022
+# Advent of Code 2022 🎄
 
-**TODO: Add description**
+'Tis the season! These are my solutions to the [2022 Advent of Code](https://adventofcode.com/2022). I'm writing these in Elixir to better my skills in the language.
 
-## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `advent_of_code_2022` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:advent_of_code_2022, "~> 0.1.0"}
-  ]
-end
+I've written a basic harness for this year:
+```
+Usage: ./advent_of_code_2022 day_num input_file
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/advent_of_code_2022>.
-
+This harness can be built with `mix escript.build`
