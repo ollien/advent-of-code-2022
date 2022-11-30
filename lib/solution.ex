@@ -1,19 +1,46 @@
 defmodule AdventOfCode2022.Solution do
-  alias AdventOfCode2022.Solution
-
   @callback prepare_input(input_filename :: String.t()) :: any()
   @callback part1(input :: any()) :: String.Chars.t()
   @callback part2(input :: any()) :: String.Chars.t()
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour AdventOfCode2022.Solution
+      @behaviour unquote(__MODULE__)
+      @before_compile unquote(__MODULE__)
 
       def prepare_input(input_filename), do: input_filename
-      def part1(input), do: :no_impl
-      def part2(input), do: :no_impl
 
-      defoverridable Solution
+      defoverridable prepare_input: 1
+    end
+  end
+
+  defmacro __before_compile__(env) do
+    quote do
+      unquote(
+        unless(Module.defines?(env.module, {:part1, 1})) do
+          IO.warn(
+            "function part1/1 not implemented in module #{inspect(env.module)}. Providing empty implementation.",
+            env
+          )
+
+          quote do
+            def part1(input), do: :no_impl
+          end
+        end
+      )
+
+      unquote(
+        unless Module.defines?(env.module, {:part2, 1}) do
+          IO.warn(
+            "function part2/1 not implemented in module #{inspect(env.module)}. Providing empty implementation.",
+            env
+          )
+
+          quote do
+            def part2(input), do: :no_impl
+          end
+        end
+      )
     end
   end
 
