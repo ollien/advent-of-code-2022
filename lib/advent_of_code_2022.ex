@@ -29,7 +29,7 @@ defmodule AdventOfCode2022 do
 
   @spec run_input_prep(module, String.t()) :: {:ok, any()} | {:error, :no_impl}
   def run_input_prep(module, filename) do
-    :erlang.apply(module, :prepare_input, [filename])
+    module.prepare_input(filename)
     |> ensure_non_default_solution_output()
   end
 
@@ -39,7 +39,7 @@ defmodule AdventOfCode2022 do
     part_func_name = get_part_func(part)
 
     part_output =
-      :erlang.apply(module, part_func_name, [input])
+      apply(module, part_func_name, [input])
       |> ensure_non_default_solution_output()
 
     case part_output do
