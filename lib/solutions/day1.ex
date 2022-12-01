@@ -6,7 +6,7 @@ defmodule AdventOfCode2022.Solution.Day1 do
   def prepare_input(input_filename) do
     File.read!(input_filename)
     |> String.split("\n")
-    |> Enum.map(&parse_line/1)
+    |> Enum.map(&parse_line!/1)
     |> group_elves()
   end
 
@@ -27,18 +27,20 @@ defmodule AdventOfCode2022.Solution.Day1 do
     |> Enum.sum()
   end
 
-  defp parse_line("") do
-    ""
+  @spec parse_line!(String.t()) :: number | :blank
+  defp parse_line!("") do
+    :blank
   end
 
-  defp parse_line(line) do
-    case Integer.parse(line) do
-      {n, ""} -> n
-    end
+  defp parse_line!(line) do
+    String.to_integer(line)
   end
 
+  @spec group_elves([number | :blank]) :: [[number]]
   defp group_elves(input_lines) do
-    Enum.chunk_by(input_lines, &(&1 != ""))
-    |> Enum.filter(&(&1 != [""]))
+    Enum.chunk_by(input_lines, &(&1 != :blank))
+    # chunk_by will produce runs of elements that produce the same value, and for a well-formed
+    # input, we will just see [:blank] wherever there is a blank line, so we can filter it out
+    |> Enum.filter(&(&1 != [:blank]))
   end
 end
