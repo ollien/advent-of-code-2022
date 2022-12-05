@@ -2,9 +2,10 @@ defmodule AdventOfCode2022.Solution.Day5 do
   use AdventOfCode2022.Solution
 
   @type move :: %{quantity: number, from: number, to: number}
+  @type stack :: [String.t()]
 
   @impl true
-  @spec prepare_input(String.t()) :: {[[String.t()]], [move()]}
+  @spec prepare_input(String.t()) :: {[stack()], [move()]}
   def prepare_input(filename) do
     File.read!(filename)
     |> String.trim_trailing()
@@ -13,20 +14,20 @@ defmodule AdventOfCode2022.Solution.Day5 do
   end
 
   @impl true
-  @spec part1({[[String.t()]], [move()]}) :: String.t()
+  @spec part1({[stack()], [move()]}) :: String.t()
   def part1(input) do
     solve(input, &run_simple_move/2)
   end
 
   @impl true
-  @spec part2({[[String.t()]], [move()]}) :: String.t()
+  @spec part2({[stack()], [move()]}) :: String.t()
   def part2(input) do
     solve(input, &run_advanced_move/2)
   end
 
   @spec solve(
-          input :: {[[String.t()]], [move()]},
-          move_func :: (stacks :: [[String.t()]], move :: move() -> [[String.t()]])
+          input :: {[stack()], [move()]},
+          move_func :: (stacks :: [stack()], move :: move() -> [stack()])
         ) :: String.t()
   def solve({stacks, moves}, move_func) do
     moves
@@ -54,7 +55,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
     {parsed_stacks, parsed_moves}
   end
 
-  @spec parse_moves!([String.t()]) :: [move()]
+  @spec parse_moves!(stack()) :: [move()]
   def parse_moves!(moves) do
     Enum.map(moves, &parse_move!/1)
   end
@@ -70,7 +71,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
     }
   end
 
-  @spec parse_stacks!([String.t()]) :: [[String.t()]]
+  @spec parse_stacks!(stack()) :: [stack()]
   def parse_stacks!(stacks) do
     num_stacks =
       stacks
@@ -107,7 +108,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
   end
 
   # build_stacks takes a list of parsed container rows and stacks them on top of each other to produce a list of stacks
-  @spec build_stacks!([[String.t() | nil]], number) :: [[String.t()]]
+  @spec build_stacks!([[String.t() | nil]], number) :: [stack()]
   defp build_stacks!(parsed_container_rows, num_stacks) do
     # assert that all rows have the same length
     true = Enum.all?(parsed_container_rows, fn row -> Enum.count(row) == num_stacks end)
@@ -125,7 +126,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
     end)
   end
 
-  @spec run_simple_move([[String.t()]], move()) :: [[String.t()]]
+  @spec run_simple_move([stack()], move()) :: [stack()]
   defp run_simple_move(stacks, move) do
     from = move.from - 1
     to = move.to - 1
@@ -141,7 +142,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
     transplant_stacks(stacks, {new_from, from}, {new_to, to})
   end
 
-  @spec run_advanced_move([[String.t()]], move()) :: [[String.t()]]
+  @spec run_advanced_move([stack()], move()) :: [stack()]
   defp run_advanced_move(stacks, move) do
     from = move.from - 1
     to = move.to - 1
@@ -155,10 +156,10 @@ defmodule AdventOfCode2022.Solution.Day5 do
   end
 
   @spec transplant_stacks(
-          stacks :: [[String.t()]],
-          {[String.t()], number()},
-          {[String.t()], number()}
-        ) :: [[String.t()]]
+          stacks :: [stack()],
+          {stack(), number()},
+          {stack(), number()}
+        ) :: [stack()]
   defp transplant_stacks(current_stacks, {new_from, from_idx}, {new_to, to_idx}) do
     current_stacks
     |> Enum.with_index()
