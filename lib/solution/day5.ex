@@ -29,7 +29,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
           input :: {[stack()], [move()]},
           move_func :: (stacks :: [stack()], move :: move() -> [stack()])
         ) :: String.t()
-  def solve({stacks, moves}, move_func) do
+  defp solve({stacks, moves}, move_func) do
     moves
     |> Enum.reduce(stacks, fn move, current_stacks ->
       move_func.(current_stacks, move)
@@ -56,12 +56,12 @@ defmodule AdventOfCode2022.Solution.Day5 do
   end
 
   @spec parse_moves!(stack()) :: [move()]
-  def parse_moves!(moves) do
+  defp parse_moves!(moves) do
     Enum.map(moves, &parse_move!/1)
   end
 
   @spec parse_move!(String.t()) :: move()
-  def parse_move!(move) do
+  defp parse_move!(move) do
     [_match, quantity, from, to] = Regex.run(~r/move (\d+) from (\d+) to (\d+)/, move)
 
     %{
@@ -72,7 +72,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
   end
 
   @spec parse_stacks!(stack()) :: [stack()]
-  def parse_stacks!(stacks) do
+  defp parse_stacks!(stacks) do
     num_stacks =
       stacks
       |> Enum.find(&is_index_row?/1)
@@ -118,7 +118,7 @@ defmodule AdventOfCode2022.Solution.Day5 do
     |> Enum.reduce(stacks, &stack_container_row/2)
   end
 
-  def stack_container_row(container_row, stacks) do
+  defp stack_container_row(container_row, stacks) do
     Enum.zip(container_row, stacks)
     |> Enum.map(fn
       {nil, existing} -> existing
