@@ -73,14 +73,11 @@ defmodule AdventOfCode2022.Solution.Day5 do
 
   @spec parse_stacks!(stack()) :: [stack()]
   defp parse_stacks!(stacks) do
-    num_stacks =
-      stacks
-      |> Enum.find(&is_index_row?/1)
-      |> get_num_stacks_from_index_row()
+    [index_row | stacks_rows] = Enum.reverse(stacks)
 
-    stacks
-    |> Enum.take_while(fn line -> not is_index_row?(line) end)
-    |> Enum.reverse()
+    num_stacks = get_num_stacks_from_index_row!(index_row)
+
+    stacks_rows
     |> Enum.map(&parse_container_row!/1)
     |> build_stacks!(num_stacks)
   end
@@ -90,8 +87,11 @@ defmodule AdventOfCode2022.Solution.Day5 do
     Regex.match?(~r/(\s?\d+\s?)+/, line)
   end
 
-  @spec get_num_stacks_from_index_row(String.t()) :: number
-  defp get_num_stacks_from_index_row(index_row) do
+  @spec get_num_stacks_from_index_row!(String.t()) :: number
+  defp get_num_stacks_from_index_row!(index_row) do
+    # Assert that this is an index row
+    true = is_index_row?(index_row)
+
     index_row
     |> String.split(" ")
     |> Enum.filter(fn s -> String.length(s) > 0 end)
