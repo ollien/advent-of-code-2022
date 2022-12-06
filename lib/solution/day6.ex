@@ -31,7 +31,7 @@ defmodule AdventOfCode2022.Solution.Day6 do
     candidate = String.slice(str, n..(marker_end - 1))
 
     cond do
-      n >= String.length(str) -> :no_match
+      String.length(candidate) < marker_length -> :no_match
       all_chars_unique?(candidate) -> marker_end
       true -> find_marker_position(str, marker_length, n + 1)
     end
