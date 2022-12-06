@@ -42,8 +42,8 @@ defmodule AdventOfCode2022.Solution.Day6 do
     num_unique_chars =
       str
       |> String.codepoints()
-      |> Enum.into(MapSet.new())
-      |> MapSet.size()
+      |> Enum.uniq()
+      |> Enum.count()
 
     num_unique_chars == String.length(str)
   end
