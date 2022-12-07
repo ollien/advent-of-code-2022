@@ -49,28 +49,31 @@ defmodule AdventOfCode2022.Solution.Day7 do
 
   @spec get_dirs(filesystem) :: [[String.t()]]
   defp get_dirs(filesystem) do
-    get_dirs(filesystem, ["/"], [])
+    get_dirs(filesystem, ["/"])
   end
 
-  defp get_dirs({:file, _}, _, dirs) do
-    dirs
+  defp get_dirs({:file, _}, _) do
+    []
   end
 
-  defp get_dirs(filesystem, cursor, dirs) do
-    # i feel like there has to be a better way to write this...
-    contents =
+  defp get_dirs(filesystem, cursor) do
+    local_dirs =
       filesystem
       |> get_in(cursor)
-      |> Enum.reduce(dirs, fn
-        {_name, {:file, _}}, acc ->
-          acc
+      |> Enum.reduce([], fn
+        {_name, {:file, _}}, dirs ->
+          dirs
 
-        {name, %{}}, acc ->
-          next_cursor = cursor ++ [name]
-          get_dirs(filesystem, next_cursor, acc)
+        {name, %{}}, dirs ->
+          [cursor ++ [name] | dirs]
       end)
 
-    [cursor | contents]
+    # Accumulate the nested directories on top of the existing local ones
+    Enum.reduce(
+      local_dirs,
+      local_dirs,
+      fn dir, all_dirs -> get_dirs(filesystem, dir) ++ all_dirs end
+    )
   end
 
   defp get_fs_size({:file, size}) do
@@ -182,7 +185,7 @@ defmodule AdventOfCode2022.Solution.Day7 do
     end
   end
 
-  @spec get_entries_after_ls([input_line()]) :: {[fs_entry()] | [input_line()]}
+  @spec get_entries_after_ls([input_line()]) :: {[fs_entry()], [input_line()]}
   defp get_entries_after_ls(input_lines) do
     input_lines
     |> Enum.split_while(fn
