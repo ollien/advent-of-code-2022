@@ -24,11 +24,8 @@ defmodule AdventOfCode2022.Solution.Day7 do
   @impl true
   @spec part1(filesystem()) :: number()
   def part1(filesystem) do
-    get_dirs(filesystem)
-    |> Enum.map(fn path ->
-      get_in(filesystem, path)
-      |> get_fs_size()
-    end)
+    get_dir_paths(filesystem)
+    |> Enum.map(&(get_in(filesystem, &1) |> fs_size()))
     |> Enum.filter(&(&1 < 100_000))
     |> Enum.sum()
   end
@@ -36,54 +33,12 @@ defmodule AdventOfCode2022.Solution.Day7 do
   @impl true
   @spec part2(filesystem()) :: number()
   def part2(filesystem) do
-    space_free = 70_000_000 - get_fs_size(filesystem)
+    space_free = 70_000_000 - fs_size(filesystem)
 
-    get_dirs(filesystem)
-    |> Enum.map(fn path ->
-      get_in(filesystem, path)
-      |> get_fs_size()
-    end)
+    get_dir_paths(filesystem)
+    |> Enum.map(&(get_in(filesystem, &1) |> fs_size()))
     |> Enum.filter(&(space_free + &1 > 30_000_000))
     |> Enum.min()
-  end
-
-  @spec get_dirs(filesystem) :: [[String.t()]]
-  defp get_dirs(filesystem) do
-    get_dirs(filesystem, ["/"])
-  end
-
-  defp get_dirs({:file, _}, _) do
-    []
-  end
-
-  defp get_dirs(filesystem, cursor) do
-    local_dirs =
-      filesystem
-      |> get_in(cursor)
-      |> Enum.reduce([], fn
-        {_name, {:file, _}}, dirs ->
-          dirs
-
-        {name, %{}}, dirs ->
-          [cursor ++ [name] | dirs]
-      end)
-
-    # Accumulate the nested directories on top of the existing local ones
-    Enum.reduce(
-      local_dirs,
-      local_dirs,
-      fn dir, all_dirs -> get_dirs(filesystem, dir) ++ all_dirs end
-    )
-  end
-
-  defp get_fs_size({:file, size}) do
-    size
-  end
-
-  defp get_fs_size(filesystem) do
-    filesystem
-    |> Enum.map(fn {_, entry} -> get_fs_size(entry) end)
-    |> Enum.sum()
   end
 
   defp parse_line!(line) do
@@ -193,5 +148,44 @@ defmodule AdventOfCode2022.Solution.Day7 do
       {:dir, _} -> true
       _ -> false
     end)
+  end
+
+  @spec get_dir_paths(filesystem) :: [[String.t()]]
+  defp get_dir_paths(filesystem) do
+    get_dir_paths(filesystem, ["/"])
+  end
+
+  defp get_dir_paths({:file, _}, _) do
+    []
+  end
+
+  defp get_dir_paths(filesystem, cursor) do
+    local_dirs =
+      filesystem
+      |> get_in(cursor)
+      |> Enum.reduce([], fn
+        {_name, {:file, _}}, dirs ->
+          dirs
+
+        {name, %{}}, dirs ->
+          [cursor ++ [name] | dirs]
+      end)
+
+    # Accumulate the nested directories on top of the existing local ones
+    Enum.reduce(
+      local_dirs,
+      local_dirs,
+      fn dir, all_dirs -> get_dir_paths(filesystem, dir) ++ all_dirs end
+    )
+  end
+
+  defp fs_size({:file, size}) do
+    size
+  end
+
+  defp fs_size(filesystem) do
+    filesystem
+    |> Enum.map(fn {_, entry} -> fs_size(entry) end)
+    |> Enum.sum()
   end
 end
