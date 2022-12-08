@@ -132,8 +132,7 @@ defmodule AdventOfCode2022.Solution.Day8 do
     |> Enum.map(fn rows ->
       Tuple.to_list(rows)
       # Zip all of the rows, so we can operate on the first element, second element, etc.
-      |> Enum.zip()
-      |> Enum.map(fn {left, right, up, down} -> left * right * up * down end)
+      |> Enum.zip_with(fn [left, right, up, down] -> left * right * up * down end)
     end)
   end
 
