@@ -24,8 +24,7 @@ defmodule AdventOfCode2022.Solution.Day7 do
   @impl true
   @spec part1(filesystem()) :: number()
   def part1(filesystem) do
-    get_dir_paths(filesystem)
-    |> Enum.map(&(get_in(filesystem, &1) |> fs_size()))
+    get_dir_sizes(filesystem)
     |> Enum.filter(&(&1 < 100_000))
     |> Enum.sum()
   end
@@ -35,8 +34,7 @@ defmodule AdventOfCode2022.Solution.Day7 do
   def part2(filesystem) do
     space_free = 70_000_000 - fs_size(filesystem)
 
-    get_dir_paths(filesystem)
-    |> Enum.map(&(get_in(filesystem, &1) |> fs_size()))
+    get_dir_sizes(filesystem)
     |> Enum.filter(&(space_free + &1 > 30_000_000))
     |> Enum.min()
   end
@@ -150,33 +148,27 @@ defmodule AdventOfCode2022.Solution.Day7 do
     end)
   end
 
-  @spec get_dir_paths(filesystem) :: [[String.t()]]
-  defp get_dir_paths(filesystem) do
-    get_dir_paths(filesystem, ["/"])
+  @spec get_dir_sizes(filesystem) :: [number()]
+  defp get_dir_sizes(filesystem) do
+    this_size = fs_size(filesystem)
+    get_dir_sizes([filesystem], [this_size])
   end
 
-  defp get_dir_paths({:file, _}, _) do
-    []
+  defp get_dir_sizes([], sizes) do
+    sizes
   end
 
-  defp get_dir_paths(filesystem, cursor) do
-    local_dirs =
-      filesystem
-      |> get_in(cursor)
-      |> Enum.reduce([], fn
-        {_name, {:file, _}}, dirs ->
-          dirs
-
-        {name, %{}}, dirs ->
-          [cursor ++ [name] | dirs]
+  defp get_dir_sizes([visiting | to_visit], sizes) do
+    {children, child_sizes} =
+      visiting
+      |> Enum.filter(fn
+        {_, {:file, _}} -> false
+        {_, %{}} -> true
       end)
+      |> Enum.map(fn {_, dir} -> {dir, fs_size(dir)} end)
+      |> Enum.unzip()
 
-    # Accumulate the nested directories on top of the existing local ones
-    Enum.reduce(
-      local_dirs,
-      local_dirs,
-      fn dir, all_dirs -> get_dir_paths(filesystem, dir) ++ all_dirs end
-    )
+    get_dir_sizes(children ++ to_visit, child_sizes ++ sizes)
   end
 
   defp fs_size({:file, size}) do
