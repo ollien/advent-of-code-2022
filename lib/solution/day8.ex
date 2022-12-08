@@ -2,6 +2,7 @@ defmodule AdventOfCode2022.Solution.Day8 do
   use AdventOfCode2022.Solution
 
   @type grid :: [[number()]]
+  @type transformed_grids :: %{left: grid, right: grid, top: grid, bottom: grid}
 
   @impl true
   @spec prepare_input(String.t()) :: grid()
@@ -16,7 +17,6 @@ defmodule AdventOfCode2022.Solution.Day8 do
   @spec part1(grid()) :: number
   def part1(grid) do
     externally_visible_indexes(grid)
-    |> Enum.uniq()
     |> Enum.count()
   end
 
@@ -28,47 +28,79 @@ defmodule AdventOfCode2022.Solution.Day8 do
     |> Enum.max()
   end
 
+  # Transform a grid so that we can scan it for visibility from all four directions.
+  # Our scan functions work from left to right, so for instance, we may transpose the
+  # grid so that we can scan top-to-bottom
+  @spec make_scannable_grids(grid()) :: transformed_grids()
+  defp make_scannable_grids(grid) do
+    %{
+      left: grid,
+      right: grid |> Enum.map(&Enum.reverse/1),
+      top: grid |> transpose(),
+      bottom: grid |> transpose() |> Enum.map(&Enum.reverse/1)
+    }
+  end
+
+  # Take scannable grids, and turn them right-side-up. This is not quite the inverse
+  # of make_scannable_grid (as it does no recombination into a single grid), but
+  # the caller can combine these into one grid, knowing that each position corresponds
+  # to the same one in each grid.
+  @spec make_scannable_grids(transformed_grids()) :: %{
+          top: grid(),
+          right: grid(),
+          top: grid(),
+          bottom: grid()
+        }
+  defp reorient_scannable_grids(%{left: left, right: right, top: top, bottom: bottom}) do
+    %{
+      left: left,
+      right: right |> Enum.map(&Enum.reverse/1),
+      top: top |> transpose(),
+      bottom: bottom |> Enum.map(&Enum.reverse/1) |> transpose()
+    }
+  end
+
+  # Get the indexes of trees (in {row, col} format) that are externally visible.
   @spec externally_visible_indexes(grid()) :: [{number(), number()}]
   defp externally_visible_indexes(grid) do
+    %{
+      left: left_grid,
+      right: right_grid,
+      top: top_grid,
+      bottom: bottom_grid
+    } = make_scannable_grids(grid)
+
     visible_from_left =
-      grid
+      left_grid
       |> Enum.with_index(fn row, index ->
         externally_visible_indexes_in_row(row) |> Enum.map(&{index, &1})
       end)
-      |> List.flatten()
 
-    # In all cases except the left one, we have to either reverse, transpose, or both, the grid in order to scan
-    # "left to right"
     visible_from_right =
-      grid
-      |> Enum.map(&Enum.reverse/1)
+      right_grid
       |> Enum.with_index(fn row, index ->
         externally_visible_indexes_in_row(row) |> Enum.map(&{index, length(row) - &1 - 1})
       end)
-      |> List.flatten()
 
     visible_from_top =
-      grid
-      |> transpose()
+      top_grid
       |> Enum.with_index(fn column, index ->
         externally_visible_indexes_in_row(column) |> Enum.map(&{&1, index})
       end)
-      |> List.flatten()
 
     visible_from_bottom =
-      grid
-      |> transpose()
-      |> Enum.map(&Enum.reverse/1)
+      bottom_grid
       |> Enum.with_index(fn column, index ->
         externally_visible_indexes_in_row(column) |> Enum.map(&{length(column) - &1 - 1, index})
       end)
-      |> List.flatten()
 
-    visible_from_left ++ visible_from_right ++ visible_from_top ++ visible_from_bottom
+    (visible_from_left ++ visible_from_right ++ visible_from_top ++ visible_from_bottom)
+    |> List.flatten()
+    |> Enum.uniq()
   end
 
-  @spec externally_visible_indexes_in_row([number()]) :: [number()]
   # Scan left to right in order to find the indexes of the trees that are externally visible
+  @spec externally_visible_indexes_in_row([number()]) :: [number()]
   defp externally_visible_indexes_in_row([first_tree | other_trees]) do
     %{visible: visible} =
       Enum.reduce(
@@ -91,42 +123,16 @@ defmodule AdventOfCode2022.Solution.Day8 do
 
   @spec build_scenic_score_table(grid) :: [[number]]
   defp build_scenic_score_table(grid) do
-    left_visibility_table =
-      grid
-      |> build_visibility_table()
-
-    # Again, we must transform the rows in order to scan left to right
-    right_visibility_table =
-      grid
-      |> Enum.map(&Enum.reverse/1)
-      |> build_visibility_table()
-      |> Enum.map(&Enum.reverse/1)
-
-    up_visibility_table =
-      grid
-      |> transpose()
-      |> build_visibility_table()
-      # Reverse our transposition
-      |> transpose()
-
-    down_visibility_table =
-      grid
-      |> transpose()
-      |> Enum.map(&Enum.reverse/1)
-      |> build_visibility_table()
-      # Reverse our transposition and reversal
-      |> Enum.map(&Enum.reverse/1)
-      |> transpose()
-
-    Enum.zip([
-      left_visibility_table,
-      right_visibility_table,
-      up_visibility_table,
-      down_visibility_table
-    ])
+    make_scannable_grids(grid)
+    |> Map.new(fn {key, transformed_grid} -> {key, build_visibility_table(transformed_grid)} end)
+    |> reorient_scannable_grids()
+    |> Map.values()
+    # Zip all of the grids, so we are able to operate on each first row, each second row, etc.
+    |> Enum.zip()
     |> Enum.map(fn rows ->
       Tuple.to_list(rows)
-      |> List.zip()
+      # Zip all of the rows, so we can operate on the first element, second element, etc.
+      |> Enum.zip()
       |> Enum.map(fn {left, right, up, down} -> left * right * up * down end)
     end)
   end
