@@ -98,17 +98,6 @@ defmodule AdventOfCode2022.Solution.Day9 do
     tail_position
   end
 
-  defp move_tail({head_row, head_col}, {tail_row, tail_col})
-       when head_col == tail_col and abs(head_row - tail_row) == 2 do
-    # The tail stays put if it's touching in any direction
-    {tail_row + sign(head_row - tail_row), tail_col}
-  end
-
-  defp move_tail({head_row, head_col}, {tail_row, tail_col})
-       when head_row == tail_row and abs(head_col - tail_col) == 2 do
-    {tail_row, tail_col + sign(head_col - tail_col)}
-  end
-
   defp move_tail({head_row, head_col}, {tail_row, tail_col}) do
     {
       tail_row + sign(head_row - tail_row),
