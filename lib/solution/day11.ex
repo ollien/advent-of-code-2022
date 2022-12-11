@@ -4,7 +4,7 @@ defmodule AdventOfCode2022.Solution.Day11 do
   @type monkey :: %{
           items: [number()],
           operation: (number() -> number()),
-          test: (number() -> boolean()),
+          divisor: number(),
           truthy_destination: number(),
           falsy_destination: number()
         }
@@ -38,14 +38,13 @@ defmodule AdventOfCode2022.Solution.Day11 do
     simulate(monkeys, 10000)
   end
 
+  @spec simulate(monkeys(), number()) :: number()
   defp simulate(monkeys, num_rounds) do
     inspection_counts =
       1..num_rounds
       |> Enum.reduce(
         %{monkeys: monkeys, inspection_counts: %{}},
-        fn round_num, %{monkeys: result_monkeys, inspection_counts: result_inspection_counts} ->
-          IO.inspect(round_num)
-          IO.inspect(result_monkeys, charlists: :as_lists)
+        fn _round_num, %{monkeys: result_monkeys, inspection_counts: result_inspection_counts} ->
           %{monkeys: monkeys, inspection_counts: inspection_counts} = run_round(result_monkeys)
 
           %{
@@ -66,13 +65,25 @@ defmodule AdventOfCode2022.Solution.Day11 do
     top1_count * top2_count
   end
 
+  @spec run_round(monkeys())) :: %{
+          monkeys: monkeys(),
+          inspection_counts: %{number() => number()}
+        }
   defp run_round(monkeys) do
+    # For part 2 to work. I hate this, and never would have figured it out.
+    # https://www.reddit.com/r/adventofcode/comments/zifqmh/comment/izrd7iz/?utm_source=reddit&utm_medium=web2x&context=3
+    best_divisor =
+      monkeys
+      |> Map.values()
+      |> Enum.map(& &1.divisor)
+      |> Enum.product()
+
     Map.keys(monkeys)
     |> Enum.reduce(
       %{monkeys: monkeys, inspection_counts: %{}},
       fn monkey_id, %{monkeys: result_monkeys, inspection_counts: inspection_counts} ->
         monkey = Map.get(result_monkeys, monkey_id)
-        item_destinations = inspect_monkey_items(monkey)
+        item_destinations = inspect_monkey_items(monkey, best_divisor)
         inspection_count = Enum.count(monkey.items)
 
         updated_inspection_counts =
@@ -96,17 +107,17 @@ defmodule AdventOfCode2022.Solution.Day11 do
     )
   end
 
-  @spec inspect_monkey_items(monkey()) :: [{number(), number()}]
-  defp inspect_monkey_items(monkey) do
+  @spec inspect_monkey_items(monkey(), number()) :: [{number(), number()}]
+  defp inspect_monkey_items(monkey, best_divisor) do
     monkey.items
-    |> Enum.map(fn item -> perform_item_inspection(monkey, item) end)
+    |> Enum.map(fn item -> perform_item_inspection(monkey, item, best_divisor) end)
   end
 
-  @spec perform_item_inspection(monkey(), number()) :: {number(), number()}
-  defp perform_item_inspection(monkey, item) do
-    next_worry_level = monkey.operation.(item)
+  @spec perform_item_inspection(monkey(), number(), number()) :: {number(), number()}
+  defp perform_item_inspection(monkey, item, best_divisor) do
+    next_worry_level = rem(monkey.operation.(item), best_divisor)
 
-    if monkey.test.(next_worry_level) do
+    if rem(next_worry_level, monkey.divisor) == 0 do
       {monkey.truthy_destination, next_worry_level}
     else
       {monkey.falsy_destination, next_worry_level}
@@ -149,7 +160,7 @@ defmodule AdventOfCode2022.Solution.Day11 do
     monkey = %{
       items: parse_monkey_starting_items!(starting_item_line),
       operation: parse_monkey_operation!(operation_line),
-      test: parse_monkey_test!(test_line),
+      divisor: parse_monkey_divisor!(test_line),
       truthy_destination: parse_truthy_destination!(truthy_destination_line),
       falsy_destination: parse_falsy_destination!(falsy_destination_line)
     }
@@ -196,12 +207,11 @@ defmodule AdventOfCode2022.Solution.Day11 do
     end
   end
 
-  @spec parse_monkey_test!(String.t()) :: (number() -> boolean())
-  defp parse_monkey_test!(test_line) do
+  @spec parse_monkey_divisor!(String.t()) :: number()
+  defp parse_monkey_divisor!(test_line) do
     [_match, raw_divisor] = Regex.run(~r/^\s*Test: divisible by (\d+)$/, test_line)
 
-    divisor = String.to_integer(raw_divisor)
-    &(rem(&1, divisor) == 0)
+    String.to_integer(raw_divisor)
   end
 
   @spec parse_truthy_destination!(String.t()) :: number()
