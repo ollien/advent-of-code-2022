@@ -22,15 +22,30 @@ defmodule AdventOfCode2022.Solution.Day11 do
 
   @impl true
   def part1(monkeys) do
+    suppressed_worry_monkeys =
+      monkeys
+      |> Enum.map(fn {monkey_id, monkey = %{operation: operation}} ->
+        updated_operation = &(operation.(&1) |> div(3))
+        {monkey_id, Map.put(monkey, :operation, updated_operation)}
+      end)
+      |> Enum.into(%{})
+
+    simulate(suppressed_worry_monkeys, 20)
+  end
+
+  @impl true
+  def part2(monkeys) do
+    simulate(monkeys, 10000)
+  end
+
+  defp simulate(monkeys, num_rounds) do
     inspection_counts =
-      1..20
+      1..num_rounds
       |> Enum.reduce(
         %{monkeys: monkeys, inspection_counts: %{}},
-        fn _round_num,
-           %{
-             monkeys: result_monkeys,
-             inspection_counts: result_inspection_counts
-           } ->
+        fn round_num, %{monkeys: result_monkeys, inspection_counts: result_inspection_counts} ->
+          IO.inspect(round_num)
+          IO.inspect(result_monkeys, charlists: :as_lists)
           %{monkeys: monkeys, inspection_counts: inspection_counts} = run_round(result_monkeys)
 
           %{
@@ -89,7 +104,7 @@ defmodule AdventOfCode2022.Solution.Day11 do
 
   @spec perform_item_inspection(monkey(), number()) :: {number(), number()}
   defp perform_item_inspection(monkey, item) do
-    next_worry_level = monkey.operation.(item) |> div(3)
+    next_worry_level = monkey.operation.(item)
 
     if monkey.test.(next_worry_level) do
       {monkey.truthy_destination, next_worry_level}
