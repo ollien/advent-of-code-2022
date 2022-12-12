@@ -65,7 +65,7 @@ defmodule AdventOfCode2022.Solution.Day11 do
     top1_count * top2_count
   end
 
-  @spec run_round(monkeys())) :: %{
+  @spec run_round(monkeys()) :: %{
           monkeys: monkeys(),
           inspection_counts: %{number() => number()}
         }
@@ -140,7 +140,6 @@ defmodule AdventOfCode2022.Solution.Day11 do
   end
 
   defp throw_item!(monkeys, item, destination) do
-    # IO.puts("Throwing #{item} to #{destination}")
     update_in(monkeys, [destination, :items], fn items -> [item | items] end)
   end
 
