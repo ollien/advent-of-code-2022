@@ -27,7 +27,12 @@ defmodule AdventOfCode2022.Solution.Day12 do
   @spec part2(graph) :: number()
   def part2(graph) do
     find_starting_positions(graph, [?a, ?S])
-    |> Enum.map(fn starting_pos -> find_shortest_num_steps(graph, starting_pos) end)
+    |> Enum.map(fn starting_pos ->
+      # I didn't feel like being smart and writing an algorithm that would just explore the whole graph
+      # so I just used concurrency :)
+      Task.async(fn -> find_shortest_num_steps(graph, starting_pos) end)
+    end)
+    |> Task.await_many()
     |> Enum.min()
   end
 
