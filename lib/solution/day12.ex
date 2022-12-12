@@ -147,13 +147,14 @@ defmodule AdventOfCode2022.Solution.Day12 do
     |> Enum.into(%{})
   end
 
-  defp print_graph(graph) do
+  # Unused debugging functions, but may be helpful to someone later
+  defp _print_graph(graph) do
     graph
     |> Enum.sort_by(fn {key, _value} -> key end)
-    |> Enum.each(fn {_idx, line} -> print_graph_line(line) end)
+    |> Enum.each(fn {_idx, line} -> _print_graph_line(line) end)
   end
 
-  defp print_graph_line(graph_line) do
+  defp _print_graph_line(graph_line) do
     graph_line
     |> Enum.sort_by(fn {key, _value} -> key end)
     |> Enum.map(fn {_key, char} -> char end)
