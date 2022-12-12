@@ -27,12 +27,16 @@ defmodule AdventOfCode2022.Solution.Day12 do
   @spec part2(graph) :: number()
   def part2(graph) do
     find_starting_positions(graph, [?a, ?S])
-    |> Enum.map(fn starting_pos ->
-      # I didn't feel like being smart and writing an algorithm that would just explore the whole graph
-      # so I just used concurrency :)
-      Task.async(fn -> find_shortest_num_steps(graph, starting_pos) end)
-    end)
-    |> Task.await_many()
+    |> Task.async_stream(
+      fn starting_pos ->
+        # I didn't feel like being smart and writing an algorithm that would just explore the whole graph
+        # so I just used concurrency :)
+        find_shortest_num_steps(graph, starting_pos)
+      end,
+      # 5 seconds is probably fine but really there's no need to limit this for a case like this
+      timeout: :infinity
+    )
+    |> Stream.map(fn {:ok, depth} -> depth end)
     |> Enum.min()
   end
 
