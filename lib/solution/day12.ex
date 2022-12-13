@@ -104,48 +104,47 @@ defmodule AdventOfCode2022.Solution.Day12 do
   end
 
   # Get a cluster for a given position, which we define as all in the allowable values values **PLUS** the
-  # single- neighbors outside it. For instance, the following may be a cluster, given all the a's are equal and the
-  # b's and c's surround it.
+  # single- neighbors outside it. For instance, the following may be a cluster (with allowable_chars = [a]), given all
+  # the a's are equal and the b's and c's surround it.
   #
   #  ccc
   # aaaab
   # aaac
   @spec get_cluster(graph(), position(), [char()]) :: [position()]
   defp get_cluster(graph, position, allowed_chars) do
-    {:ok, visited_agent} = Agent.start_link(fn -> MapSet.new() end)
-    res = get_cluster(graph, position, allowed_chars, visited_agent)
+    get_cluster(graph, allowed_chars, [position], MapSet.new(), [])
+  end
 
-    # Don't keep this around for the lifetime of the process, we just need it for the recursive call
-    Agent.stop(visited_agent)
-
+  @spec get_cluster(graph(), [char()], [position()], MapSet.t(position()), [position()]) :: [
+          position()
+        ]
+  def get_cluster(_graph, _allowed_chars, [], _visited_agent, res) do
     res
   end
 
-  @spec get_cluster(graph(), position(), [char()], Agent.agent()) :: [position()]
-  def get_cluster(graph, position, allowed_chars, visited_agent) do
-    visited = Agent.get(visited_agent, fn value -> value end)
-
+  def get_cluster(graph, allowed_chars, [position | to_visit], visited, res) do
     cluster_neighbors =
       get_neighbors(graph, position)
       |> Enum.filter(fn neighbor ->
         not MapSet.member?(visited, neighbor)
       end)
 
-    Agent.update(visited_agent, fn visited ->
-      Enum.into(cluster_neighbors, visited)
-    end)
+    next_visited = Enum.into(cluster_neighbors, visited)
 
-    other_members =
+    next_to_visit =
       cluster_neighbors
       |> Enum.filter(fn {_neighbor_position, neighbor_value} ->
         Enum.member?(allowed_chars, neighbor_value)
       end)
-      |> Enum.map(fn {neighbor_position, _neighbor_value} ->
-        get_cluster(graph, neighbor_position, allowed_chars, visited_agent)
-      end)
-      |> List.flatten()
+      |> Enum.map(fn {neighbor_position, _neighbor_value} -> neighbor_position end)
 
-    cluster_neighbors ++ other_members
+    get_cluster(
+      graph,
+      allowed_chars,
+      next_to_visit ++ to_visit,
+      next_visited,
+      cluster_neighbors ++ res
+    )
   end
 
   @spec find_shortest_num_steps(graph(), position()) :: number()
