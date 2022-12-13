@@ -12,7 +12,6 @@ defmodule AdventOfCode2022.Solution.Day12 do
       |> String.split("\n")
       |> parse_graph()
 
-    # print_graph(graph)
     graph
   end
 
@@ -26,7 +25,9 @@ defmodule AdventOfCode2022.Solution.Day12 do
   @impl true
   @spec part2(graph) :: number()
   def part2(graph) do
-    find_starting_positions(graph, [?a, ?S])
+    positions = find_starting_positions(graph, [?a, ?S])
+
+    positions
     |> Task.async_stream(
       fn starting_pos ->
         # I didn't feel like being smart and writing an algorithm that would just explore the whole graph
@@ -48,6 +49,8 @@ defmodule AdventOfCode2022.Solution.Day12 do
       |> Enum.map(fn col -> {line_idx, col} end)
     end)
     |> List.flatten()
+    # This is not necessary to solve the puzzle but is an optimization
+    |> cull_starting_positions(graph, allowed_chars)
   end
 
   @spec find_starting_positions_in_line(graph(), [char()]) :: [number()]
@@ -55,6 +58,94 @@ defmodule AdventOfCode2022.Solution.Day12 do
     graph_line
     |> Enum.filter(fn {_key, value} -> Enum.member?(allowed_chars, value) end)
     |> Enum.map(&Kernel.elem(&1, 0))
+  end
+
+  @spec cull_starting_positions([position()], graph(), [char()]) :: [position()]
+  defp cull_starting_positions(starting_positions, graph, allowed_chars) do
+    culled =
+      starting_positions
+      |> Enum.reduce(MapSet.new(), fn starting_position, culled ->
+        if MapSet.member?(culled, starting_position) do
+          # the cullable_cluster call is expensive, so don't try if this position
+          # has already been culled
+          culled
+        else
+          cullable_cluster(graph, starting_position, allowed_chars)
+          |> Enum.map(fn {position, _value} -> position end)
+          |> Enum.into(culled)
+        end
+      end)
+
+    starting_positions
+    |> Enum.into(MapSet.new())
+    |> MapSet.difference(culled)
+    |> Enum.to_list()
+  end
+
+  @spec cullable_cluster(graph(), position(), [char()]) :: [position()]
+  defp cullable_cluster(graph, position, allowed_chars) do
+    cluster = get_cluster(graph, position, allowed_chars)
+
+    is_cullable =
+      cluster
+      |> Enum.filter(fn {_cluster_position, cluster_value} ->
+        not Enum.member?(allowed_chars, cluster_value) and
+          Enum.all?(allowed_chars, &can_traverse_to?(&1, cluster_value))
+      end)
+      # If we can't traverse to any of the elements (and they're not in our set of allowed values)
+      # then we can ignore this entire cluster
+      |> Enum.empty?()
+
+    if is_cullable do
+      cluster
+    else
+      []
+    end
+  end
+
+  # Get a cluster for a given position, which we define as all in the allowable values values **PLUS** the
+  # single- neighbors outside it. For instance, the following may be a cluster, given all the a's are equal and the
+  # b's and c's surround it.
+  #
+  #  ccc
+  # aaaab
+  # aaac
+  @spec get_cluster(graph(), position(), [char()]) :: [position()]
+  defp get_cluster(graph, position, allowed_chars) do
+    {:ok, visited_agent} = Agent.start_link(fn -> MapSet.new() end)
+    res = get_cluster(graph, position, allowed_chars, visited_agent)
+
+    # Don't keep this around for the lifetime of the process, we just need it for the recursive call
+    Agent.stop(visited_agent)
+
+    res
+  end
+
+  @spec get_cluster(graph(), position(), [char()], Agent.agent()) :: [position()]
+  def get_cluster(graph, position, allowed_chars, visited_agent) do
+    visited = Agent.get(visited_agent, fn value -> value end)
+
+    cluster_neighbors =
+      get_neighbors(graph, position)
+      |> Enum.filter(fn neighbor ->
+        not MapSet.member?(visited, neighbor)
+      end)
+
+    Agent.update(visited_agent, fn visited ->
+      Enum.into(cluster_neighbors, visited)
+    end)
+
+    other_members =
+      cluster_neighbors
+      |> Enum.filter(fn {_neighbor_position, neighbor_value} ->
+        Enum.member?(allowed_chars, neighbor_value)
+      end)
+      |> Enum.map(fn {neighbor_position, _neighbor_value} ->
+        get_cluster(graph, neighbor_position, allowed_chars, visited_agent)
+      end)
+      |> List.flatten()
+
+    cluster_neighbors ++ other_members
   end
 
   @spec find_shortest_num_steps(graph(), position()) :: number()
