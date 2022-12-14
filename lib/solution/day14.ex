@@ -4,6 +4,8 @@ defmodule AdventOfCode2022.Solution.Day14 do
   @type position :: {number(), number()}
   @type board :: MapSet.t(position())
 
+  @sand_start_pos {0, 500}
+
   @impl true
   def prepare_input(filename) do
     File.read!(filename)
@@ -15,62 +17,99 @@ defmodule AdventOfCode2022.Solution.Day14 do
   end
 
   @impl true
+  @spec part1(board()) :: number()
   def part1(board) do
     {_board, num_added} = add_sand_until_abyss(board)
     num_added
   end
 
-  @spec add_sand_until_abyss(board()) :: {board(), number()}
-  def add_sand_until_abyss(board) do
-    add_sand_until_abyss(board, 0)
+  @impl true
+  @spec part2(board()) :: number()
+  def part2(board) do
+    {_board, num_added} = add_sand_until_full(board)
+    num_added
   end
 
-  @spec add_sand_until_abyss(board(), number) :: {board, number()}
-  def add_sand_until_abyss(board, num_added) do
-    case add_sand(board) do
-      {:ok, board} -> add_sand_until_abyss(board, num_added + 1)
+  @spec add_sand_until_abyss(board()) :: {board(), number()}
+  defp add_sand_until_abyss(board) do
+    {bottom_row, _col} = MapSet.to_list(board) |> Enum.max_by(fn {row, _col} -> row end)
+    abyss_row = bottom_row + 1
+
+    add_sand_until_abyss(board, abyss_row, 0)
+  end
+
+  @spec add_sand_until_abyss(board(), number(), number()) :: {board, number()}
+  defp add_sand_until_abyss(board, abyss_row, num_added) do
+    case add_sand(board, {:abyss, abyss_row}) do
+      {:ok, _position, board} -> add_sand_until_abyss(board, abyss_row, num_added + 1)
       {:abyss, board} -> {board, num_added}
     end
   end
 
-  @spec add_sand(board()) :: {:ok, board()} | {:abyss, board()}
-  def add_sand(board) do
-    case drop_sand(board, {0, 500}) do
+  @spec add_sand_until_full(board(), number(), number()) :: {board, number()}
+  defp add_sand_until_full(board) do
+    {bottom_row, _col} = MapSet.to_list(board) |> Enum.max_by(fn {row, _col} -> row end)
+    floor_row = bottom_row + 2
+
+    add_sand_until_full(board, floor_row, 0)
+  end
+
+  defp add_sand_until_full(board, floor_row, num_added) do
+    case add_sand(board, {:floor, floor_row}) do
+      {:ok, @sand_start_pos, board} ->
+        {board, num_added + 1}
+
+      {:ok, _position, board} ->
+        add_sand_until_full(board, floor_row, num_added + 1)
+    end
+  end
+
+  @spec add_sand(board(), {:abyss | :floor, number()}) ::
+          {:ok, position(), board()} | {:abyss, board()}
+  defp add_sand(board, config) do
+    case drop_sand(board, config, @sand_start_pos) do
       {:ok, final_sand_pos} ->
-        {:ok, MapSet.put(board, final_sand_pos)}
+        {:ok, final_sand_pos, MapSet.put(board, final_sand_pos)}
 
       :abyss ->
         {:abyss, board}
     end
   end
 
-  @spec drop_sand(board(), position()) :: {:ok, position()} | :abyss
-  def drop_sand(board, sand_pos) do
-    {abyss_row, _floor_col} = MapSet.to_list(board) |> Enum.max_by(fn {row, _col} -> row end)
-    drop_sand(board, abyss_row + 1, sand_pos)
-  end
+  @spec drop_sand(board(), {:abyss | :floor, number()}, position()) :: {:ok, position()} | :abyss
+  defp drop_sand(board, config = {mode, end_row}, {sand_row, sand_col}) do
+    empty_at? = fn pos = {row, _col} ->
+      case mode do
+        :abyss ->
+          not MapSet.member?(board, pos)
 
-  @spec drop_sand(board(), number(), position()) :: {:ok, position()} | :abyss
-  def drop_sand(board, abyss_row, {sand_row, sand_col}) do
+        :floor when row == end_row ->
+          false
+
+        :floor when row < end_row ->
+          not MapSet.member?(board, pos)
+      end
+    end
+
     cond do
-      sand_row >= abyss_row ->
+      mode == :abyss and sand_row >= end_row ->
         :abyss
 
-      not MapSet.member?(board, {sand_row + 1, sand_col}) ->
-        drop_sand(board, {sand_row + 1, sand_col})
+      empty_at?.({sand_row + 1, sand_col}) ->
+        drop_sand(board, config, {sand_row + 1, sand_col})
 
-      not MapSet.member?(board, {sand_row + 1, sand_col - 1}) ->
-        drop_sand(board, {sand_row + 1, sand_col - 1})
+      empty_at?.({sand_row + 1, sand_col - 1}) ->
+        drop_sand(board, config, {sand_row + 1, sand_col - 1})
 
-      not MapSet.member?(board, {sand_row + 1, sand_col + 1}) ->
-        drop_sand(board, {sand_row + 1, sand_col + 1})
+      empty_at?.({sand_row + 1, sand_col + 1}) ->
+        drop_sand(board, config, {sand_row + 1, sand_col + 1})
 
       true ->
         {:ok, {sand_row, sand_col}}
     end
   end
 
-  @spec parse_coord!(String.t()) :: [position()]
+  @spec parse_rock_line!(String.t()) :: [position()]
   defp parse_rock_line!(line) do
     line
     |> String.split(" -> ")
