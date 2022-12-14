@@ -8,7 +8,7 @@ defmodule AdventOfCode2022.Solution do
       @behaviour unquote(__MODULE__)
       @before_compile unquote(__MODULE__)
 
-      def prepare_input(input_filename), do: input_filename
+      def prepare_input(input_filename), do: {:error, :no_impl}
 
       defoverridable prepare_input: 1
     end
