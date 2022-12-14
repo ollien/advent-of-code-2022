@@ -3,8 +3,10 @@ defmodule AdventOfCode2022.Solution.Day14 do
 
   @type position :: {number(), number()}
   @type board :: MapSet.t(position())
+  @type mode :: :abyss | :floor
+  @type config :: {mode(), number()}
 
-  @sand_start_pos {0, 500}
+  @sand_start_position {0, 500}
 
   @impl true
   def prepare_input(filename) do
@@ -41,8 +43,11 @@ defmodule AdventOfCode2022.Solution.Day14 do
   @spec add_sand_until_abyss(board(), number(), number()) :: {board, number()}
   defp add_sand_until_abyss(board, abyss_row, num_added) do
     case add_sand(board, {:abyss, abyss_row}) do
-      {:ok, _position, board} -> add_sand_until_abyss(board, abyss_row, num_added + 1)
-      {:abyss, board} -> {board, num_added}
+      {:ok, _position, board} ->
+        add_sand_until_abyss(board, abyss_row, num_added + 1)
+
+      {:abyss, board} ->
+        {board, num_added}
     end
   end
 
@@ -56,7 +61,7 @@ defmodule AdventOfCode2022.Solution.Day14 do
 
   defp add_sand_until_full(board, floor_row, num_added) do
     case add_sand(board, {:floor, floor_row}) do
-      {:ok, @sand_start_pos, board} ->
+      {:ok, @sand_start_position, board} ->
         {board, num_added + 1}
 
       {:ok, _position, board} ->
@@ -64,48 +69,60 @@ defmodule AdventOfCode2022.Solution.Day14 do
     end
   end
 
-  @spec add_sand(board(), {:abyss | :floor, number()}) ::
+  @spec add_sand(board(), config) ::
           {:ok, position(), board()} | {:abyss, board()}
   defp add_sand(board, config) do
-    case drop_sand(board, config, @sand_start_pos) do
-      {:ok, final_sand_pos} ->
-        {:ok, final_sand_pos, MapSet.put(board, final_sand_pos)}
+    case drop_sand(board, config, @sand_start_position) do
+      {:ok, final_sand_position} ->
+        {:ok, final_sand_position, MapSet.put(board, final_sand_position)}
 
       :abyss ->
         {:abyss, board}
     end
   end
 
-  @spec drop_sand(board(), {:abyss | :floor, number()}, position()) :: {:ok, position()} | :abyss
-  defp drop_sand(board, config = {mode, end_row}, {sand_row, sand_col}) do
-    empty_at? = fn pos = {row, _col} ->
-      case mode do
-        :abyss ->
-          not MapSet.member?(board, pos)
-
-        :floor when row == end_row ->
-          false
-
-        :floor when row < end_row ->
-          not MapSet.member?(board, pos)
-      end
+  @spec drop_sand(board(), config, position()) :: {:ok, position()} | :abyss
+  defp drop_sand(board, config, sand_position) do
+    case get_next_drop_move(board, config, sand_position) do
+      {:cont, next_position} -> drop_sand(board, config, next_position)
+      {:halt, :abyss} -> :abyss
+      {:halt, ending_position} -> {:ok, ending_position}
     end
+  end
 
+  @spec get_next_drop_move(board, config, position()) ::
+          {:cont, position()} | {:halt, position()} | {:halt, :abyss}
+  defp get_next_drop_move(_board, {:abyss, end_row}, {sand_row, _sand_col})
+       when sand_row >= end_row do
+    {:halt, :abyss}
+  end
+
+  defp get_next_drop_move(board, config, sand_position = {sand_row, sand_col}) do
+    possible_positions = [
+      {sand_row + 1, sand_col},
+      {sand_row + 1, sand_col - 1},
+      {sand_row + 1, sand_col + 1}
+    ]
+
+    # Fun tidbit: This `find` call is about 250ms slower than just chaining a `cond` with the possible positions
+    # on  my machine, but is IMO more readable as-is.
+    case Enum.find(possible_positions, &can_drop_to(board, config, &1)) do
+      nil -> {:halt, sand_position}
+      next_position -> {:cont, next_position}
+    end
+  end
+
+  @spec can_drop_to(board, config, position()) :: boolean()
+  defp can_drop_to(board, {:abyss, _end_row}, sand_position) do
+    not MapSet.member?(board, sand_position)
+  end
+
+  defp can_drop_to(board, {:floor, end_row}, sand_position = {sand_row, _sand_col}) do
+    # It is not valid sand_row to be > end_row, as this is an infinite floor, so we will only consider
+    # the == and < cases
     cond do
-      mode == :abyss and sand_row >= end_row ->
-        :abyss
-
-      empty_at?.({sand_row + 1, sand_col}) ->
-        drop_sand(board, config, {sand_row + 1, sand_col})
-
-      empty_at?.({sand_row + 1, sand_col - 1}) ->
-        drop_sand(board, config, {sand_row + 1, sand_col - 1})
-
-      empty_at?.({sand_row + 1, sand_col + 1}) ->
-        drop_sand(board, config, {sand_row + 1, sand_col + 1})
-
-      true ->
-        {:ok, {sand_row, sand_col}}
+      sand_row == end_row -> false
+      sand_row < end_row -> not MapSet.member?(board, sand_position)
     end
   end
 
