@@ -4,7 +4,6 @@ defmodule AdventOfCode2022.Solution.Day15 do
   @type position :: {number(), number()}
   @type range :: {number(), number()}
   @type reading :: %{sensor: position(), beacon: position()}
-  @scan_row 2_000_000
 
   @impl true
   def prepare_input(filename) do
@@ -17,7 +16,8 @@ defmodule AdventOfCode2022.Solution.Day15 do
   @impl true
   @spec part1([reading]) :: number()
   def part1(readings) do
-    scanned_ranges = scannable_beacons_in_row(readings)
+    scan_row = 2_000_000
+    scanned_ranges = scannable_ranges_in_row(readings, scan_row)
 
     num_scanned_positions =
       scanned_ranges
@@ -26,12 +26,30 @@ defmodule AdventOfCode2022.Solution.Day15 do
 
     beacons = readings |> Enum.map(fn %{beacon: beacon_pos} -> beacon_pos end)
 
-    scanned_beacons = beacons_included_in_scan(scanned_ranges, beacons)
+    scanned_beacons = beacons_included_in_scan(scanned_ranges, scan_row, beacons)
     num_scanned_positions - length(scanned_beacons)
   end
 
-  @spec scannable_beacons_in_row([reading()]) :: [range()]
-  defp scannable_beacons_in_row(readings) do
+  @impl true
+  @spec part2([reading]) :: number()
+  def part2(readings) do
+    # This solution is DUMB and depends on the input.
+    [{row, row_ranges}] =
+      0..4_000_000
+      |> Enum.map(fn row -> {row, scannable_ranges_in_row(readings, row)} end)
+      |> Enum.filter(fn {_row, ranges} -> length(ranges) > 1 end)
+
+    [{_start1, end1}, {start2, _end2}] = Enum.sort(row_ranges)
+
+    if end1 + 2 == start2 do
+      tuning_frequency(start2 - 1, row)
+    else
+      "No known solution"
+    end
+  end
+
+  @spec scannable_ranges_in_row([reading()], number()) :: [range()]
+  defp scannable_ranges_in_row(readings, scan_row) do
     scanned_ranges =
       readings
       |> Enum.map(fn %{sensor: sensor_pos, beacon: beacon_pos} ->
@@ -39,7 +57,7 @@ defmodule AdventOfCode2022.Solution.Day15 do
         {sensor_pos, distance}
       end)
       |> Enum.map(fn {sensor_pos, radius} ->
-        scannable_beacons_for_sensor(sensor_pos, radius, @scan_row)
+        scannable_beacons_for_sensor(sensor_pos, radius, scan_row)
       end)
       |> Enum.filter(&(&1 != nil))
       |> Enum.sort()
@@ -62,7 +80,7 @@ defmodule AdventOfCode2022.Solution.Day15 do
     abs(y2 - y1) + abs(x2 - x1)
   end
 
-  @spec scannable_beacons_for_sensor(position(), number(), number()) :: range()
+  @spec scannable_beacons_for_sensor(position(), number(), number()) :: range() | nil
   defp scannable_beacons_for_sensor({sensor_x, sensor_y}, sensor_radius, row) do
     distance_to_row = abs(sensor_y - row)
     horizontal_scannable_distance = sensor_radius - distance_to_row
@@ -77,11 +95,11 @@ defmodule AdventOfCode2022.Solution.Day15 do
     end
   end
 
-  @spec beacons_included_in_scan([range()], [position()]) :: [position()]
-  defp beacons_included_in_scan(scanned_ranges, beacon_positions) do
+  @spec beacons_included_in_scan([range()], number(), [position()]) :: [position()]
+  defp beacons_included_in_scan(scanned_ranges, scan_row, beacon_positions) do
     beacon_positions
     |> Enum.filter(fn
-      {_x, y} when y != @scan_row ->
+      {_x, y} when y != scan_row ->
         false
 
       {x, _y} ->
@@ -111,6 +129,11 @@ defmodule AdventOfCode2022.Solution.Day15 do
     else
       [{start1, end2}]
     end
+  end
+
+  @spec tuning_frequency(number(), number()) :: number()
+  defp tuning_frequency(x, y) do
+    x * 4_000_000 + y
   end
 
   @spec parse_line!(String.t()) :: reading()
