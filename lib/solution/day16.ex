@@ -1,9 +1,9 @@
 defmodule AdventOfCode2022.Solution.Day16 do
   use AdventOfCode2022.Solution
-  require IEx
 
   @type valve :: %{flow_rate: number(), neighbors: [String.t()]}
   @type graph :: %{String.t() => valve()}
+  @type state :: %{current_position: String.t(), waiting_for_pressure: number()}
 
   @impl true
   def prepare_input(filename) do
@@ -22,33 +22,64 @@ defmodule AdventOfCode2022.Solution.Day16 do
   @spec maximize_pressure(graph()) :: number()
   defp maximize_pressure(graph) do
     {:ok, memo_pid} = Agent.start(fn -> %{} end)
-    maximize_pressure(graph, "AA", 30, MapSet.new(), memo_pid)
+
+    maximize_pressure(
+      graph,
+      %{current_position: "AA", waiting_for_pressure: 0},
+      30,
+      MapSet.new(),
+      memo_pid
+    )
   end
 
-  @spec maximize_pressure(graph(), String.t(), number(), MapSet.t(String.t()), Agent.agent()) ::
+  @spec maximize_pressure(graph(), state(), number(), MapSet.t(String.t()), Agent.agent()) ::
           number()
-  defp maximize_pressure(_graph, _current_position, steps_left, _open_valves, _memo_pid)
+  defp maximize_pressure(_graph, _state, steps_left, _open_valves, _memo_pid)
        when steps_left <= 0 do
     0
   end
 
-  defp maximize_pressure(graph, current_position, steps_left, open_valves, memo_pid)
-       when steps_left > 0 do
-    %{flow_rate: flow_rate, neighbors: neighbors} = Map.get(graph, current_position)
-
+  defp maximize_pressure(
+         graph,
+         state,
+         steps_left,
+         open_valves,
+         memo_pid
+       ) do
     memo_value =
       Agent.get(memo_pid, fn memo ->
-        Map.get(memo, {current_position, steps_left, open_valves})
+        Map.get(memo, {state, steps_left, open_valves})
       end)
 
-    do_next_step = fn next_steps_left, now_open_valves ->
+    if memo_value != nil do
+      memo_value
+    else
+      result =
+        build_walk_operations(graph, state, steps_left, open_valves, memo_pid)
+        |> Enum.map(fn op -> op.() end)
+        |> Enum.max()
+
+      Agent.update(memo_pid, fn memo ->
+        Map.put(memo, {state, steps_left, open_valves}, result)
+      end)
+
+      result
+    end
+  end
+
+  @spec build_walk_operations(graph(), state(), number(), MapSet.t(String.t()), Agent.agent()) ::
+          [(() -> number())]
+  defp build_walk_operations(graph, state, steps_left, open_valves, memo_pid) do
+    %{flow_rate: flow_rate, neighbors: neighbors} = Map.get(graph, state.current_position)
+
+    do_next_step = fn ->
       neighbors
       |> Enum.map(fn neighbor ->
         maximize_pressure(
           graph,
-          neighbor,
-          next_steps_left,
-          now_open_valves,
+          %{state | current_position: neighbor, waiting_for_pressure: 0},
+          steps_left - 1,
+          open_valves,
           memo_pid
         )
       end)
@@ -56,34 +87,27 @@ defmodule AdventOfCode2022.Solution.Day16 do
     end
 
     cond do
-      memo_value != nil ->
-        memo_value
+      state.waiting_for_pressure > 0 ->
+        local_pressure = state.waiting_for_pressure * steps_left
+        # We already opened the valve
+        [fn -> local_pressure + do_next_step.() end]
 
-      can_open_valve?(open_valves, current_position, flow_rate) ->
-        # Don't count the step in which we open the valve in here
-        local_pressure = (steps_left - 1) * flow_rate
-        now_open_valves = MapSet.put(open_valves, current_position)
-
-        result =
-          max(
-            local_pressure + do_next_step.(steps_left - 2, now_open_valves),
-            do_next_step.(steps_left - 1, open_valves)
+      can_open_valve?(open_valves, state.current_position, flow_rate) ->
+        open_valve = fn ->
+          maximize_pressure(
+            graph,
+            %{state | waiting_for_pressure: flow_rate},
+            steps_left - 1,
+            # "Open" the valve so the two states aren't competing for it
+            MapSet.put(open_valves, state.current_position),
+            memo_pid
           )
+        end
 
-        Agent.update(memo_pid, fn memo ->
-          Map.put(memo, {current_position, steps_left, open_valves}, result)
-        end)
-
-        result
+        [open_valve, do_next_step]
 
       true ->
-        result = do_next_step.(steps_left - 1, open_valves)
-
-        Agent.update(memo_pid, fn memo ->
-          Map.put(memo, {current_position, steps_left, open_valves}, result)
-        end)
-
-        result
+        [do_next_step]
     end
   end
 
