@@ -17,11 +17,11 @@ defmodule AdventOfCode2022.Solution.Day17 do
     end
 
     def pop(pushes = %Pushes{current: [next | rest]}) do
-      {%{pushes | current: rest}, next}
+      {:normal, %{pushes | current: rest}, next}
     end
 
     def pop(pushes = %Pushes{initial: [next | rest], current: []}) do
-      {%{pushes | current: rest}, next}
+      {:cycled, %{pushes | current: rest}, next}
     end
   end
 
@@ -39,11 +39,17 @@ defmodule AdventOfCode2022.Solution.Day17 do
     simulate(pushes, 2022)
   end
 
+  @impl true
+  @spec part2(AdventOfCode2022.Solution.Day17.Pushes.t()) :: number
+  def part2(pushes) do
+    simulate(pushes, 1_000_000_000_000)
+  end
+
   @spec simulate(Pushes.t(), number()) :: number()
   defp simulate(pushes, max_piece_idx) do
     floor = for(col <- 0..6, do: {0, col}) |> Enum.into(MapSet.new())
     first_piece = get_piece(0, 0)
-    simulate(0, max_piece_idx, first_piece, pushes, floor)
+    simulate(0, max_piece_idx, first_piece, pushes, floor, [])
   end
 
   @spec simulate(
@@ -51,25 +57,134 @@ defmodule AdventOfCode2022.Solution.Day17 do
           number(),
           [{number(), number()}],
           Pushes.t(),
-          MapSet.t({number(), number()})
+          MapSet.t({number(), number()}),
+          [{number(), number()}]
         ) :: number()
-  defp simulate(piece_idx, max_piece_idx, _current_piece, _pushes, placed)
+  defp simulate(piece_idx, max_piece_idx, _current_piece, _pushes, placed, _breaks)
        when piece_idx >= max_piece_idx do
     floor_height(placed)
   end
 
-  defp simulate(piece_idx, max_piece_idx, current_piece, pushes, placed) do
-    {next_pushes, push_dir} = Pushes.pop(pushes)
+  defp simulate(piece_idx, max_piece_idx, current_piece, pushes, placed, breaks) do
+    case Pushes.pop(pushes) do
+      {:normal, next_pushes, push_dir} ->
+        perform_simulation_step(
+          piece_idx,
+          max_piece_idx,
+          current_piece,
+          push_dir,
+          next_pushes,
+          placed,
+          breaks
+        )
+
+      {:cycled, next_pushes, push_dir} ->
+        try_skip_to_end(
+          piece_idx,
+          max_piece_idx,
+          current_piece,
+          push_dir,
+          next_pushes,
+          placed,
+          breaks
+        )
+    end
+  end
+
+  @spec perform_simulation_step(
+          number(),
+          number(),
+          [position()],
+          direction(),
+          Pushes.t(),
+          MapSet.t(),
+          [{number(), number()}]
+        ) :: number()
+  defp perform_simulation_step(
+         piece_idx,
+         max_piece_idx,
+         current_piece,
+         push_dir,
+         pushes,
+         placed,
+         breaks
+       ) do
     blown_piece = blow(current_piece, placed, push_dir)
 
     case move_down(blown_piece, placed) do
       :done ->
         next_placed = Enum.into(blown_piece, placed)
         next_piece = get_piece(piece_idx + 1, floor_height(next_placed))
-        simulate(piece_idx + 1, max_piece_idx, next_piece, next_pushes, next_placed)
+        simulate(piece_idx + 1, max_piece_idx, next_piece, pushes, next_placed, breaks)
 
       {:shifted, shifted} ->
-        simulate(piece_idx, max_piece_idx, shifted, next_pushes, placed)
+        simulate(piece_idx, max_piece_idx, shifted, pushes, placed, breaks)
+    end
+  end
+
+  @spec try_skip_to_end(
+          number(),
+          number(),
+          [position()],
+          direction(),
+          Pushes.t(),
+          MapSet.t(),
+          [{number(), number()}]
+        ) :: number()
+  defp try_skip_to_end(piece_idx, max_piece_idx, current_piece, push_dir, pushes, placed, breaks) do
+    blown_piece = blow(current_piece, placed, push_dir)
+    next_placed = Enum.into(blown_piece, placed)
+
+    case {move_down(blown_piece, placed), breaks} do
+      {:done, [break1]} ->
+        {floor_height1, piece_idx1} = break1
+        floor_height2 = floor_height(next_placed)
+
+        height_per_step = floor_height2 - floor_height1
+        pieces_per_step = piece_idx - piece_idx1
+
+        # Minus one to account for the fact that we're zero indexed and currently working on the next piece, technically
+        num_pieces_to_skip = max_piece_idx - piece_idx1 - 1
+        num_steps = num_pieces_to_skip |> div(pieces_per_step)
+        skipped_total_height = num_steps * height_per_step
+        next_piece = get_piece(piece_idx + 1, floor_height2)
+        remaining_steps = num_pieces_to_skip - num_steps * pieces_per_step
+
+        rest_height =
+          simulate(
+            rem(piece_idx + 1, 5),
+            remaining_steps + rem(piece_idx + 1, 5),
+            next_piece,
+            pushes,
+            next_placed,
+            []
+          ) - height_per_step
+
+        skipped_total_height + rest_height
+
+      {:done, _} ->
+        break = {floor_height(next_placed), piece_idx}
+
+        perform_simulation_step(
+          piece_idx,
+          max_piece_idx,
+          current_piece,
+          push_dir,
+          pushes,
+          placed,
+          [break | breaks]
+        )
+
+      _ ->
+        perform_simulation_step(
+          piece_idx,
+          max_piece_idx,
+          current_piece,
+          push_dir,
+          pushes,
+          placed,
+          breaks
+        )
     end
   end
 
