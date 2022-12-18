@@ -1,9 +1,13 @@
 defmodule AdventOfCode2022.Solution.Day16 do
   use AdventOfCode2022.Solution
 
+  # This solution is slow and messy, but I spent so long on it and I don't really care enough to clean it up anymore.
+  # On my machine, part 1 takes 10 seconds (ish) and part 2 takes 6 minutes (ish) and **30 GIGABYTES** of memory.
+
   @type valve :: %{flow_rate: number(), neighbors: [String.t()]}
   @type graph :: %{String.t() => valve()}
   @type state :: %{current_position: String.t(), waiting_for_pressure: number()}
+  @type continue_func :: (graph(), MapSet.t(String.t()), Agent.agent() -> number())
 
   @impl true
   def prepare_input(filename) do
@@ -16,27 +20,78 @@ defmodule AdventOfCode2022.Solution.Day16 do
 
   @impl true
   def part1(graph) do
-    maximize_pressure(graph)
+    maximize_pressure(graph, :part1)
   end
 
-  @spec maximize_pressure(graph()) :: number()
-  defp maximize_pressure(graph) do
+  @impl true
+  def part2(graph) do
+    maximize_pressure(graph, :part2)
+  end
+
+  @spec maximize_pressure(graph(), :part1 | :part2) :: number()
+  defp maximize_pressure(graph, part) do
     {:ok, memo_pid} = Agent.start(fn -> %{} end)
 
-    maximize_pressure(
-      graph,
-      %{current_position: "AA", waiting_for_pressure: 0},
-      30,
-      MapSet.new(),
-      memo_pid
-    )
+    result =
+      maximize_pressure(
+        graph,
+        %{current_position: "AA", waiting_for_pressure: 0},
+        num_steps_for_part(part),
+        MapSet.new(),
+        num_actors_for_part(part),
+        memo_pid,
+        continue_func_for_part(part)
+      )
+
+    Agent.stop(memo_pid)
+    result
   end
 
-  @spec maximize_pressure(graph(), state(), number(), MapSet.t(String.t()), Agent.agent()) ::
+  @spec num_steps_for_part(:part1 | :part2) :: number()
+  defp num_steps_for_part(:part1), do: 30
+  defp num_steps_for_part(:part2), do: 26
+
+  @spec num_actors_for_part(:part1 | :part2) :: number()
+  defp num_actors_for_part(:part1), do: 1
+  defp num_actors_for_part(:part2), do: 2
+
+  @spec continue_func_for_part(:part1 | :part2) :: continue_func()
+  defp continue_func_for_part(:part1), do: fn _graph, _open_valves, _memo_pid -> 0 end
+
+  defp continue_func_for_part(:part2),
+    do: fn graph, open_valves, memo_pid ->
+      maximize_pressure(
+        graph,
+        %{current_position: "AA", waiting_for_pressure: 0},
+        num_steps_for_part(:part2),
+        open_valves,
+        num_actors_for_part(:part2) - 1,
+        memo_pid,
+        fn _graph, _open_valves, _memo_pid -> 0 end
+      )
+    end
+
+  @spec maximize_pressure(
+          graph(),
+          state(),
+          number(),
+          MapSet.t(String.t()),
+          number(),
+          Agent.agent(),
+          continue_func()
+        ) ::
           number()
-  defp maximize_pressure(_graph, _state, steps_left, _open_valves, _memo_pid)
+  defp maximize_pressure(
+         graph,
+         _state,
+         steps_left,
+         open_valves,
+         _num_actors,
+         memo_pid,
+         continue_func
+       )
        when steps_left <= 0 do
-    0
+    continue_func.(graph, open_valves, memo_pid)
   end
 
   defp maximize_pressure(
@@ -44,32 +99,69 @@ defmodule AdventOfCode2022.Solution.Day16 do
          state,
          steps_left,
          open_valves,
-         memo_pid
+         num_actors,
+         memo_pid,
+         continue_func
        ) do
     memo_value =
-      Agent.get(memo_pid, fn memo ->
-        Map.get(memo, {state, steps_left, open_valves})
-      end)
+      Agent.get(
+        memo_pid,
+        fn memo ->
+          # Slight optimization: by hashing the set of open valves, we can get better lookup times because
+          # it's no longer an O(n) comparison (though obviously hashing takes some time)
+          Map.get(memo, {state, steps_left, :erlang.phash2(open_valves), num_actors})
+        end,
+        :infinity
+      )
 
     if memo_value != nil do
       memo_value
     else
       result =
-        build_walk_operations(graph, state, steps_left, open_valves, memo_pid)
+        build_walk_operations(
+          graph,
+          state,
+          steps_left,
+          open_valves,
+          num_actors,
+          memo_pid,
+          continue_func
+        )
         |> Enum.map(fn op -> op.() end)
         |> Enum.max()
 
-      Agent.update(memo_pid, fn memo ->
-        Map.put(memo, {state, steps_left, open_valves}, result)
-      end)
+      Agent.update(
+        memo_pid,
+        fn memo ->
+          Map.put(memo, {state, steps_left, :erlang.phash2(open_valves), num_actors}, result)
+        end,
+        # Yes, I've actually seen this time out...
+        :infinity
+      )
 
       result
     end
   end
 
-  @spec build_walk_operations(graph(), state(), number(), MapSet.t(String.t()), Agent.agent()) ::
+  @spec build_walk_operations(
+          graph(),
+          state(),
+          number(),
+          MapSet.t(String.t()),
+          number(),
+          Agent.agent(),
+          continue_func()
+        ) ::
           [(() -> number())]
-  defp build_walk_operations(graph, state, steps_left, open_valves, memo_pid) do
+  defp build_walk_operations(
+         graph,
+         state,
+         steps_left,
+         open_valves,
+         num_actors,
+         memo_pid,
+         continue_func
+       ) do
     %{flow_rate: flow_rate, neighbors: neighbors} = Map.get(graph, state.current_position)
 
     do_next_step = fn ->
@@ -80,7 +172,9 @@ defmodule AdventOfCode2022.Solution.Day16 do
           %{state | current_position: neighbor, waiting_for_pressure: 0},
           steps_left - 1,
           open_valves,
-          memo_pid
+          num_actors,
+          memo_pid,
+          continue_func
         )
       end)
       |> Enum.max()
@@ -100,7 +194,9 @@ defmodule AdventOfCode2022.Solution.Day16 do
             steps_left - 1,
             # "Open" the valve so the two states aren't competing for it
             MapSet.put(open_valves, state.current_position),
-            memo_pid
+            num_actors,
+            memo_pid,
+            continue_func
           )
         end
 
