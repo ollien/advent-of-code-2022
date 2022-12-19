@@ -18,14 +18,11 @@ defmodule AdventOfCode2022.Solution.Day18 do
   @spec part1(MapSet.t(position())) :: number()
   def part1(cubes) do
     cubes
-    |> Enum.reduce(0, fn cube, total_surface_area ->
-      surface_area =
-        neighbors(cube)
-        |> Enum.reject(&MapSet.member?(cubes, &1))
-        |> Enum.count()
-
-      surface_area + total_surface_area
+    |> Enum.flat_map(fn cube ->
+      neighbors(cube)
+      |> Enum.reject(&MapSet.member?(cubes, &1))
     end)
+    |> Enum.count()
   end
 
   @impl true
