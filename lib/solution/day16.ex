@@ -2,12 +2,12 @@ defmodule AdventOfCode2022.Solution.Day16 do
   use AdventOfCode2022.Solution
 
   # This solution is slow and messy, but I spent so long on it and I don't really care enough to clean it up anymore.
-  # On my machine, part 1 takes 10 seconds (ish) and part 2 takes 6 minutes (ish) and **30 GIGABYTES** of memory.
+  # On my machine, part 1 takes 10 seconds (ish) and part 2 takes ~3 minutes and uses a lot of memory
 
   @type valve :: %{flow_rate: number(), neighbors: [String.t()]}
   @type graph :: %{String.t() => valve()}
   @type state :: %{current_position: String.t(), waiting_for_pressure: number()}
-  @type continue_func :: (graph(), MapSet.t(String.t()), Agent.agent() -> number())
+  @type continue_func :: (graph(), MapSet.t(String.t()), :ets.tid() -> number())
 
   @impl true
   def prepare_input(filename) do
@@ -30,7 +30,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
 
   @spec maximize_pressure(graph(), :part1 | :part2) :: number()
   defp maximize_pressure(graph, part) do
-    {:ok, memo_pid} = Agent.start(fn -> %{} end)
+    memo_ref = :ets.new(:memo, [])
 
     result =
       maximize_pressure(
@@ -39,11 +39,11 @@ defmodule AdventOfCode2022.Solution.Day16 do
         num_steps_for_part(part),
         MapSet.new(),
         num_actors_for_part(part),
-        memo_pid,
+        memo_ref,
         continue_func_for_part(part)
       )
 
-    Agent.stop(memo_pid)
+    :ets.delete(memo_ref)
     result
   end
 
@@ -56,18 +56,18 @@ defmodule AdventOfCode2022.Solution.Day16 do
   defp num_actors_for_part(:part2), do: 2
 
   @spec continue_func_for_part(:part1 | :part2) :: continue_func()
-  defp continue_func_for_part(:part1), do: fn _graph, _open_valves, _memo_pid -> 0 end
+  defp continue_func_for_part(:part1), do: fn _graph, _open_valves, _memo_ref -> 0 end
 
   defp continue_func_for_part(:part2),
-    do: fn graph, open_valves, memo_pid ->
+    do: fn graph, open_valves, memo_ref ->
       maximize_pressure(
         graph,
         %{current_position: "AA", waiting_for_pressure: 0},
         num_steps_for_part(:part2),
         open_valves,
         num_actors_for_part(:part2) - 1,
-        memo_pid,
-        fn _graph, _open_valves, _memo_pid -> 0 end
+        memo_ref,
+        fn _graph, _open_valves, _memo_ref -> 0 end
       )
     end
 
@@ -77,7 +77,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
           number(),
           MapSet.t(String.t()),
           number(),
-          Agent.agent(),
+          :ets.tid(),
           continue_func()
         ) ::
           number()
@@ -87,11 +87,11 @@ defmodule AdventOfCode2022.Solution.Day16 do
          steps_left,
          open_valves,
          _num_actors,
-         memo_pid,
+         memo_ref,
          continue_func
        )
        when steps_left <= 0 do
-    continue_func.(graph, open_valves, memo_pid)
+    continue_func.(graph, open_valves, memo_ref)
   end
 
   defp maximize_pressure(
@@ -100,19 +100,14 @@ defmodule AdventOfCode2022.Solution.Day16 do
          steps_left,
          open_valves,
          num_actors,
-         memo_pid,
+         memo_ref,
          continue_func
        ) do
     memo_value =
-      Agent.get(
-        memo_pid,
-        fn memo ->
-          # Slight optimization: by hashing the set of open valves, we can get better lookup times because
-          # it's no longer an O(n) comparison (though obviously hashing takes some time)
-          Map.get(memo, {state, steps_left, :erlang.phash2(open_valves), num_actors})
-        end,
-        :infinity
-      )
+      case :ets.lookup(memo_ref, {state, steps_left, :erlang.phash2(open_valves), num_actors}) do
+        [{_key, value}] -> value
+        [] -> nil
+      end
 
     if memo_value != nil do
       memo_value
@@ -124,19 +119,15 @@ defmodule AdventOfCode2022.Solution.Day16 do
           steps_left,
           open_valves,
           num_actors,
-          memo_pid,
+          memo_ref,
           continue_func
         )
         |> Enum.map(fn op -> op.() end)
         |> Enum.max()
 
-      Agent.update(
-        memo_pid,
-        fn memo ->
-          Map.put(memo, {state, steps_left, :erlang.phash2(open_valves), num_actors}, result)
-        end,
-        # Yes, I've actually seen this time out...
-        :infinity
+      :ets.insert(
+        memo_ref,
+        {{state, steps_left, :erlang.phash2(open_valves), num_actors}, result}
       )
 
       result
@@ -149,7 +140,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
           number(),
           MapSet.t(String.t()),
           number(),
-          Agent.agent(),
+          :ets.tid(),
           continue_func()
         ) ::
           [(() -> number())]
@@ -159,7 +150,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
          steps_left,
          open_valves,
          num_actors,
-         memo_pid,
+         memo_ref,
          continue_func
        ) do
     %{flow_rate: flow_rate, neighbors: neighbors} = Map.get(graph, state.current_position)
@@ -173,7 +164,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
           steps_left - 1,
           open_valves,
           num_actors,
-          memo_pid,
+          memo_ref,
           continue_func
         )
       end)
@@ -195,7 +186,7 @@ defmodule AdventOfCode2022.Solution.Day16 do
             # "Open" the valve so the two states aren't competing for it
             MapSet.put(open_valves, state.current_position),
             num_actors,
-            memo_pid,
+            memo_ref,
             continue_func
           )
         end
