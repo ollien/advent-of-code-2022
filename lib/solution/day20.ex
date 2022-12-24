@@ -1,6 +1,4 @@
 defmodule AdventOfCode2022.Solution.Day20 do
-  require IEx
-
   alias AdventOfCode2022.Solution.Day20.RingBuffer
   use AdventOfCode2022.Solution
 
@@ -19,13 +17,9 @@ defmodule AdventOfCode2022.Solution.Day20 do
   @impl true
   def part1({buffer, refs}) do
     zero_ref = Enum.find(refs, fn ref -> RingBuffer.value(buffer, ref) == 0 end)
-    mixed_buffer = mix_buffer(buffer, refs)
 
-    [1000, 2000, 3000]
-    |> Enum.map(fn coord ->
-      RingBuffer.nth_after(mixed_buffer, zero_ref, coord)
-    end)
-    |> Enum.sum()
+    mix_buffer(buffer, refs)
+    |> sum_grove_coordinates(zero_ref)
   end
 
   @spec mix_buffer(RingBuffer.t(), [reference()]) :: RingBuffer.t()
@@ -39,27 +33,31 @@ defmodule AdventOfCode2022.Solution.Day20 do
   end
 
   @spec mix_value(RingBuffer.t(), reference()) :: RingBuffer.t()
-  defp mix_value(buffer, ref) do
+  def mix_value(buffer, ref) do
     value = RingBuffer.value(buffer, ref)
-    swap = swap_fn_for_value(value)
 
-    1..abs(value)
-    |> Enum.reduce(buffer, fn _, swapped_buffer ->
-      swap.(swapped_buffer, ref)
+    num_to_traverse =
+      cond do
+        # We must travel an extra step if we are going past the original
+        value > 0 and abs(value) >= Enum.count(buffer) -> value + 1
+        value < 0 and abs(value) >= Enum.count(buffer) -> value - 2
+        # If we are negative (here and above), we must go an extra step since we get the element "after"
+        value < 0 -> value - 1
+        true -> value
+      end
+
+    ref_to_move_to = RingBuffer.nth_after(buffer, ref, num_to_traverse)
+    RingBuffer.move_after(buffer, ref_to_move_to, ref)
+  end
+
+  @spec sum_grove_coordinates(RingBuffer.t(), reference()) :: number()
+  defp sum_grove_coordinates(buffer, start_point) do
+    [1000, 2000, 3000]
+    |> Enum.map(fn coord ->
+      ref = RingBuffer.nth_after(buffer, start_point, coord)
+      RingBuffer.value(buffer, ref)
     end)
-  end
-
-  @spec swap_fn_for_value(number()) :: (RingBuffer.t(), reference() -> RingBuffer.t())
-  defp swap_fn_for_value(value) when value > 0 do
-    &RingBuffer.swap_forward/2
-  end
-
-  defp swap_fn_for_value(value) when value < 0 do
-    &RingBuffer.swap_backward/2
-  end
-
-  defp swap_fn_for_value(0) do
-    fn buffer, _ref -> buffer end
+    |> Enum.sum()
   end
 
   defmodule RingBuffer do
@@ -109,6 +107,23 @@ defmodule AdventOfCode2022.Solution.Day20 do
       }
     end
 
+    @spec to_list(__MODULE__.t(), reference()) :: [number()]
+    def to_list(buffer, start_ref) do
+      %{value: first_value, next: next_ref} = buffer.buffer[start_ref]
+      to_list(buffer, start_ref, next_ref, [first_value])
+    end
+
+    @spec to_list(__MODULE__.t(), reference(), reference(), [number()]) :: [number()]
+    defp to_list(_buffer, start_ref, cursor, acc) when start_ref == cursor do
+      acc
+      |> Enum.reverse()
+    end
+
+    defp to_list(buffer, start_ref, cursor, acc) do
+      %{value: value, next: next_ref} = buffer.buffer[cursor]
+      to_list(buffer, start_ref, next_ref, [value | acc])
+    end
+
     @spec value(__MODULE__.t(), reference()) :: number()
     def value(buffer, ref) do
       get_in(buffer.buffer, [ref, :value])
@@ -144,17 +159,88 @@ defmodule AdventOfCode2022.Solution.Day20 do
       end)
     end
 
-    @spec nth_after(__MODULE__.t(), reference(), number()) :: number()
-    def nth_after(buffer, ref, n) when is_map_key(buffer.buffer, ref) and n >= 0 do
-      num_refs = map_size(buffer.buffer)
+    @spec move_after(__MODULE__.t(), reference(), reference()) :: __MODULE__.t()
+    def move_after(buffer, relative_ref, ref)
+        when is_map_key(buffer.buffer, relative_ref) and is_map_key(buffer.buffer, ref) do
+      if relative_ref == ref || buffer.buffer[relative_ref].next == ref do
+        buffer
+      else
+        do_move_after(buffer, relative_ref, ref)
+      end
+    end
 
-      selected_link =
-        1..rem(n, num_refs)
-        |> Enum.reduce(buffer.buffer[ref], fn _idx, cursor ->
-          buffer.buffer[cursor.next]
+    @spec do_move_after(__MODULE__.t(), reference(), reference()) :: __MODULE__.t()
+    defp do_move_after(buffer, relative_ref, ref) do
+      %{next: next_ref} = buffer.buffer[relative_ref]
+
+      buffer
+      |> splice(ref)
+      |> Map.update!(:buffer, fn internal_buffer ->
+        internal_buffer
+        |> Map.update!(relative_ref, fn link -> %{link | next: ref} end)
+        |> Map.update!(ref, fn link -> %{link | previous: relative_ref, next: next_ref} end)
+        |> Map.update!(next_ref, fn link -> %{link | previous: ref} end)
+      end)
+    end
+
+    @spec splice(__MODULE__.t(), reference()) :: __MODULE__.t()
+    defp splice(buffer, ref) when is_map_key(buffer.buffer, ref) do
+      %{previous: prev_ref, next: next_ref} = buffer.buffer[ref]
+
+      buffer
+      |> Map.update!(:buffer, fn internal_buffer ->
+        internal_buffer
+        |> Map.update!(prev_ref, fn link -> %{link | next: next_ref} end)
+        |> Map.update!(next_ref, fn link -> %{link | previous: prev_ref} end)
+      end)
+    end
+
+    @spec nth_after(__MODULE__.t(), reference(), number()) :: reference()
+    def nth_after(buffer, ref, 0) when is_map_key(buffer.buffer, ref) do
+      ref
+    end
+
+    def nth_after(buffer, ref, n) when is_map_key(buffer.buffer, ref) do
+      num_refs = map_size(buffer.buffer)
+      traverse = traversal_fn(n)
+
+      {end_ref, _end_link} =
+        traversal_range(n, num_refs)
+        |> Enum.reduce({ref, buffer.buffer[ref]}, fn _idx, {_cursor_ref, cursor} ->
+          traversed_ref = traverse.(cursor)
+
+          traversed_ref =
+            if traversed_ref == ref do
+              traverse.(buffer.buffer[traversed_ref])
+            else
+              traversed_ref
+            end
+
+          {traversed_ref, buffer.buffer[traversed_ref]}
         end)
 
-      selected_link.value
+      end_ref
+    end
+
+    @spec traversal_fn(number()) :: (link() -> link())
+    defp traversal_fn(value) when value > 0 do
+      fn cursor -> cursor.next end
+    end
+
+    defp traversal_fn(value) when value < 0 do
+      fn cursor -> cursor.previous end
+    end
+
+    @spec traversal_range(number(), number()) :: Enum.t(number())
+    defp traversal_range(n, max) do
+      range_end = abs(rem(n, max))
+
+      if range_end == 0 do
+        # closest we can get to an empty range
+        []
+      else
+        1..range_end
+      end
     end
   end
 
@@ -189,22 +275,8 @@ defmodule AdventOfCode2022.Solution.Day20 do
         |> Map.keys()
         |> Enum.at(0)
 
-      value_list(buffer, first_ref)
+      RingBuffer.to_list(buffer, first_ref)
       |> Enum.reverse()
-    end
-
-    defp value_list(buffer, start_ref) do
-      %{value: first_value, next: next_ref} = buffer.buffer[start_ref]
-      value_list(buffer, start_ref, next_ref, [first_value])
-    end
-
-    defp value_list(_buffer, start_ref, cursor, acc) when start_ref == cursor do
-      acc
-    end
-
-    defp value_list(buffer, start_ref, cursor, acc) do
-      %{value: value, next: next_ref} = buffer.buffer[cursor]
-      value_list(buffer, start_ref, next_ref, [value | acc])
     end
   end
 end
