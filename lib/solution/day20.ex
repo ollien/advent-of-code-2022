@@ -4,21 +4,37 @@ defmodule AdventOfCode2022.Solution.Day20 do
 
   @impl true
   def prepare_input(filename) do
-    values =
-      File.read!(filename)
-      |> String.trim_trailing()
-      |> String.split("\n")
-      |> Enum.map(&String.to_integer/1)
-
-    values
-    |> RingBuffer.from_list()
+    File.read!(filename)
+    |> String.trim_trailing()
+    |> String.split("\n")
+    |> Enum.map(&String.to_integer/1)
   end
 
   @impl true
-  def part1({buffer, refs}) do
+  def part1(input_values) do
+    {buffer, refs} =
+      input_values
+      |> RingBuffer.from_list()
+
     zero_ref = Enum.find(refs, fn ref -> RingBuffer.value(buffer, ref) == 0 end)
 
     mix_buffer(buffer, refs)
+    |> sum_grove_coordinates(zero_ref)
+  end
+
+  @impl true
+  def part2(input_values) do
+    {buffer, refs} =
+      input_values
+      |> Enum.map(&(&1 * 811_589_153))
+      |> RingBuffer.from_list()
+
+    zero_ref = Enum.find(refs, fn ref -> RingBuffer.value(buffer, ref) == 0 end)
+
+    1..10
+    |> Enum.reduce(buffer, fn _n, res_buffer ->
+      mix_buffer(res_buffer, refs)
+    end)
     |> sum_grove_coordinates(zero_ref)
   end
 
@@ -38,15 +54,12 @@ defmodule AdventOfCode2022.Solution.Day20 do
 
     num_to_traverse =
       cond do
-        # We must travel an extra step if we are going past the original
-        value > 0 and abs(value) >= Enum.count(buffer) -> value + 1
-        value < 0 and abs(value) >= Enum.count(buffer) -> value - 2
-        # If we are negative (here and above), we must go an extra step since we get the element "after"
+        # If we are negative, we must go an extra step since we get the element "after"
         value < 0 -> value - 1
         true -> value
       end
 
-    ref_to_move_to = RingBuffer.nth_after(buffer, ref, num_to_traverse)
+    ref_to_move_to = RingBuffer.nth_after(buffer, ref, num_to_traverse, splice: true)
     RingBuffer.move_after(buffer, ref_to_move_to, ref)
   end
 
@@ -129,36 +142,6 @@ defmodule AdventOfCode2022.Solution.Day20 do
       get_in(buffer.buffer, [ref, :value])
     end
 
-    @spec swap_forward(__MODULE__.t(), reference()) :: __MODULE__.t()
-    def swap_forward(buffer, ref) do
-      %{previous: prev_ref, next: next_ref} = buffer.buffer[ref]
-      %{next: after_next_ref} = buffer.buffer[next_ref]
-
-      buffer
-      |> Map.update!(:buffer, fn internal_buffer ->
-        internal_buffer
-        |> Map.update!(prev_ref, fn link -> %{link | next: next_ref} end)
-        |> Map.update!(next_ref, fn link -> %{link | previous: prev_ref, next: ref} end)
-        |> Map.update!(ref, fn link -> %{link | previous: next_ref, next: after_next_ref} end)
-        |> Map.update!(after_next_ref, fn link -> %{link | previous: ref} end)
-      end)
-    end
-
-    @spec swap_backward(__MODULE__.t(), reference()) :: __MODULE__.t()
-    def swap_backward(buffer, ref) do
-      %{previous: prev_ref, next: next_ref} = buffer.buffer[ref]
-      %{previous: before_prev_ref} = buffer.buffer[prev_ref]
-
-      buffer
-      |> Map.update!(:buffer, fn internal_buffer ->
-        internal_buffer
-        |> Map.update!(next_ref, fn link -> %{link | previous: prev_ref} end)
-        |> Map.update!(prev_ref, fn link -> %{link | previous: ref, next: next_ref} end)
-        |> Map.update!(ref, fn link -> %{link | previous: before_prev_ref, next: prev_ref} end)
-        |> Map.update!(before_prev_ref, fn link -> %{link | next: ref} end)
-      end)
-    end
-
     @spec move_after(__MODULE__.t(), reference(), reference()) :: __MODULE__.t()
     def move_after(buffer, relative_ref, ref)
         when is_map_key(buffer.buffer, relative_ref) and is_map_key(buffer.buffer, ref) do
@@ -195,26 +178,42 @@ defmodule AdventOfCode2022.Solution.Day20 do
       end)
     end
 
-    @spec nth_after(__MODULE__.t(), reference(), number()) :: reference()
-    def nth_after(buffer, ref, 0) when is_map_key(buffer.buffer, ref) do
+    @spec nth_after(__MODULE__.t(), reference(), number(), keyword()) :: reference()
+    def nth_after(buffer, ref, n, opts \\ [])
+
+    def nth_after(buffer, ref, 0, _opts) when is_map_key(buffer.buffer, ref) do
       ref
     end
 
-    def nth_after(buffer, ref, n) when is_map_key(buffer.buffer, ref) do
+    def nth_after(buffer, ref, n, opts) when is_map_key(buffer.buffer, ref) do
+      # If we specify spliced, wrapping around should effectively skip the given ref element.
+      if Keyword.get(opts, :splice) do
+        spliced_buffer = splice(buffer, ref)
+        {popped_link, popped_internal_buffer} = Map.pop(spliced_buffer.buffer, ref)
+
+        spliced_buffer =
+          Map.update!(spliced_buffer, :buffer, fn _current -> popped_internal_buffer end)
+
+        get_nth_after(spliced_buffer, ref, popped_link, n)
+      else
+        get_nth_after(buffer, ref, n)
+      end
+    end
+
+    @spec get_nth_after(__MODULE__.t(), reference(), number()) :: reference()
+    defp get_nth_after(buffer, ref, n) when is_map_key(buffer.buffer, ref) do
+      get_nth_after(buffer, ref, buffer.buffer[ref], n)
+    end
+
+    @spec get_nth_after(__MODULE__.t(), reference(), link(), number()) :: reference()
+    defp get_nth_after(buffer, ref, link, n) do
       num_refs = map_size(buffer.buffer)
       traverse = traversal_fn(n)
 
       {end_ref, _end_link} =
         traversal_range(n, num_refs)
-        |> Enum.reduce({ref, buffer.buffer[ref]}, fn _idx, {_cursor_ref, cursor} ->
+        |> Enum.reduce({ref, link}, fn _idx, {_cursor_ref, cursor} ->
           traversed_ref = traverse.(cursor)
-
-          traversed_ref =
-            if traversed_ref == ref do
-              traverse.(buffer.buffer[traversed_ref])
-            else
-              traversed_ref
-            end
 
           {traversed_ref, buffer.buffer[traversed_ref]}
         end)
@@ -276,7 +275,6 @@ defmodule AdventOfCode2022.Solution.Day20 do
         |> Enum.at(0)
 
       RingBuffer.to_list(buffer, first_ref)
-      |> Enum.reverse()
     end
   end
 end
